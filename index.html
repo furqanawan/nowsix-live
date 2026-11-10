@@ -72,6 +72,18 @@
   .tab{border:1px solid var(--border);background:var(--surface);color:var(--soft);border-radius:99px;
     padding:6px 12px;font-size:13px;cursor:pointer}
   .tab.on{background:var(--grad);color:#07202A;border-color:transparent;font-weight:700}
+  form .f{margin-bottom:14px}
+  label{display:block;font-size:13px;font-weight:700;color:var(--soft);margin-bottom:6px}
+  input,select{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);
+    color:var(--text);font-size:16px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:70px;padding:10px 8px;border-radius:10px;border:1px solid var(--border);
+    background:var(--surface);color:var(--soft);font-size:14px;cursor:pointer}
+  .seg button.on{background:var(--grad);color:#07202A;border-color:transparent;font-weight:700}
+  .go{width:100%;padding:14px;border:0;border-radius:14px;background:var(--grad);color:#07202A;font-weight:800;font-size:16px;cursor:pointer}
+  .go:disabled{opacity:.5}
+  .err{color:var(--wicket);font-size:13px;margin-top:8px}
+  .ok{font-size:40px;text-align:center}
 </style>
 </head>
 <body>
@@ -205,14 +217,85 @@ function render() {
   show(html);
 }
 
+// ---- Player registration form (?reg=1) --------------------------------
+const reg = new URLSearchParams(location.search).get('reg') === '1';
+const form = {team: '', role: '', hand: 'R'};
+
+async function loadReg() {
+  document.getElementById('tabs').innerHTML = '';
+  document.getElementById('status').textContent = 'Player registration';
+  if (!tid) { show('<div class="empty">This link is missing the tournament.</div>'); return; }
+  try {
+    const h = {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}};
+    const [tr, lr] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/tournaments?id=eq.${encodeURIComponent(tid)}&select=name,registration_open`, h),
+      fetch(`${SUPABASE_URL}/rest/v1/live_matches?tournament_id=eq.${encodeURIComponent(tid)}&match_id=eq._t&select=data`, h),
+    ]);
+    const t = (await tr.json())[0];
+    const o = ((await lr.json())[0] || {}).data || {};
+    if (!t) { show('<div class="empty">Tournament not found. Ask the organiser for a new link.</div>'); return; }
+    document.getElementById('title').textContent = t.name;
+    document.getElementById('updated').textContent = 'Register to play';
+    if (!t.registration_open) { show('<div class="empty">Registration is closed. Contact the organiser.</div>'); return; }
+    if (localStorage.getItem('nowsix-reg-' + tid)) {
+      show(`<div class="card"><div class="pad"><div class="ok">✅</div><p style="text-align:center">You have already registered from this phone. The organiser will confirm you.</p>
+        <button class="go" onclick="localStorage.removeItem('nowsix-reg-${esc(tid)}');loadReg()">Register another player</button></div></div>`);
+      return;
+    }
+    const teams = (o.teams || []);
+    const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) =>
+      `<button type="button" class="${form[key] === v ? 'on' : ''}" onclick="form['${key}']='${v}';this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${l}</button>`).join('')}</div>`;
+    show(`<div class="card"><div class="pad"><form onsubmit="return sendReg(event)">
+      <div class="f"><label>Full name *</label><input id="rn" maxlength="60" autocomplete="name" required></div>
+      <div class="f"><label>Team *</label><select id="rt" required><option value="">Choose your team</option>
+        ${teams.map(x => `<option value="${esc(x.id)}" ${x.full ? 'disabled' : ''}>${esc(x.name)}${x.full ? ' (squad full)' : ''}</option>`).join('')}</select></div>
+      <div class="f"><label>Role</label>${seg('role', [['bat', 'Batter'], ['bowl', 'Bowler'], ['all', 'All-rounder'], ['wk', 'Keeper']])}</div>
+      <div class="f"><label>Batting hand</label>${seg('hand', [['R', 'Right'], ['L', 'Left']])}</div>
+      <div class="f"><label>Mobile (optional, for the organiser)</label><input id="rp" type="tel" maxlength="20" autocomplete="tel"></div>
+      <button class="go" id="rgo">Send registration</button><div class="err" id="rerr"></div>
+    </form></div></div>`);
+  } catch (e) {
+    show('<div class="empty">No connection. Check the internet and try again.</div>');
+  }
+}
+
+async function sendReg(ev) {
+  ev.preventDefault();
+  const name = document.getElementById('rn').value.trim().replace(/\s+/g, ' ');
+  const team = document.getElementById('rt').value;
+  const phone = document.getElementById('rp').value.trim();
+  const err = document.getElementById('rerr');
+  if (name.length < 2) { err.textContent = 'Please write your full name.'; return false; }
+  if (!team) { err.textContent = 'Please choose your team.'; return false; }
+  const btn = document.getElementById('rgo');
+  btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/registrations`, {
+      method: 'POST',
+      headers: {apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal'},
+      body: JSON.stringify({tournament_id: tid, team_id: team, name, role: form.role || null,
+        bat_hand: form.hand, phone: phone || null}),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    localStorage.setItem('nowsix-reg-' + tid, '1');
+    show(`<div class="card"><div class="pad"><div class="ok">✅</div>
+      <p style="text-align:center"><b>${esc(name)}</b>, your registration is sent.<br>The organiser will confirm you in the squad.</p></div></div>`);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Send registration';
+    err.textContent = 'Could not send. Registration may be closed, or there is no internet. Try again.';
+  }
+  return false;
+}
+
 function schedule() {
+  if (reg) { loadReg(); return; }
   clearInterval(timer);
   if (document.visibilityState === 'visible') {
     load();
     timer = setInterval(load, 5000);
   }
 }
-document.addEventListener('visibilitychange', schedule);
+if (!reg) document.addEventListener('visibilitychange', schedule);
 schedule();
 </script>
 </body>
