@@ -84,6 +84,13 @@
   .go:disabled{opacity:.5}
   .err{color:var(--wicket);font-size:13px;margin-top:8px}
   .ok{font-size:40px;text-align:center}
+  .rate{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+  .rate button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
+    color:var(--soft);font-weight:700;font-size:13px;cursor:pointer;padding:0}
+  .rate button.on{background:var(--grad);color:#07202A;border-color:transparent}
+  .ratebtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);
+    background:var(--surface2);color:var(--text);font-weight:700;cursor:pointer}
+  .avg{color:var(--cyan);font-weight:800}
 </style>
 </head>
 <body>
@@ -118,6 +125,11 @@ async function load() {
     rows = await r.json();
     lastOk = Date.now();
     document.getElementById('status').textContent = 'Live · updates every few seconds';
+    if (view.startsWith('rate:')) {
+      if (!document.getElementById('rsend')) openRate(view.slice(5));
+      return;
+    }
+    document.getElementById('status').textContent = 'Live · updates every few seconds';
     render();
   } catch (e) {
     document.getElementById('status').textContent = 'Reconnecting…';
@@ -131,7 +143,7 @@ function ballChip(l) {
   return `<span class="b ${cls}">${esc(l === '0' ? '•' : l)}</span>`;
 }
 
-function matchCard(d, status) {
+function matchCard(d, status, matchId) {
   const live = status === 'live';
   const inns = d.innings || [];
   const teams = [d.a, d.b];
@@ -162,6 +174,8 @@ function matchCard(d, status) {
       ${live ? '<span class="pill live">LIVE</span>' : ''}</div>
     ${lines}${notBatted}${so}${now}
     ${d.result ? `<div class="res">${esc(d.result)}</div>` : ''}
+    ${d.potm && d.potm.name ? `<div class="muted" style="margin-top:6px">⭐ Player of the match: <b>${esc(d.potm.name)}</b></div>` : ''}
+    ${(d.players || []).length && matchId ? `<button class="ratebtn" onclick="openRate('${esc(matchId)}')">⭐ Rate the players</button>` : ''}
   </div></div>`;
 }
 
@@ -197,8 +211,9 @@ function render() {
     return;
   }
   let html = '';
+  if (view.startsWith('rate:')) { renderRate(view.slice(5)); return; }
   if (view === 'live') {
-    html += matches.length ? matches.map(m => matchCard(m.data, m.status)).join('')
+    html += matches.length ? matches.map(m => matchCard(m.data, m.status, m.match_id)).join('')
       : '<div class="empty">No match today. Check the fixtures below.</div>';
     if (o && o.next.length) {
       html += `<h2>Next matches</h2><div class="card list">${o.next.map(m =>
@@ -215,6 +230,108 @@ function render() {
     if (!html) html = '<div class="empty">Stats appear after the first match.</div>';
   }
   show(html);
+}
+
+// ---- Fan ratings ---------------------------------------------------------
+const mine = {};          // player id -> my rating for the open match
+let avgs = {};            // player id -> {avg, votes}
+
+async function fanSession() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('nowsix-fan') || 'null'); } catch (e) {}
+  const now = Math.floor(Date.now() / 1000);
+  if (s && s.expires_at > now + 60) return s;
+  const h = {apikey: KEY, 'Content-Type': 'application/json'};
+  const r = s && s.refresh_token
+    ? await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {method: 'POST', headers: h, body: JSON.stringify({refresh_token: s.refresh_token})})
+    : await fetch(`${SUPABASE_URL}/auth/v1/signup`, {method: 'POST', headers: h, body: '{}'});
+  let out = await r.json();
+  if (!out.access_token && s) {   // refresh failed: start a new fan session
+    out = await (await fetch(`${SUPABASE_URL}/auth/v1/signup`, {method: 'POST', headers: h, body: '{}'})).json();
+  }
+  if (!out.access_token) throw new Error('no session');
+  s = {access_token: out.access_token, refresh_token: out.refresh_token, user: out.user.id,
+       expires_at: out.expires_at || (now + (out.expires_in || 3600))};
+  localStorage.setItem('nowsix-fan', JSON.stringify(s));
+  return s;
+}
+
+async function loadAvgs(matchId) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/fan_rating_avg?tournament_id=eq.${encodeURIComponent(tid)}&match_id=eq.${encodeURIComponent(matchId)}&select=player_id,avg_rating,votes`,
+    {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}});
+  avgs = {};
+  if (r.ok) for (const x of await r.json()) avgs[x.player_id] = {avg: x.avg_rating, votes: x.votes};
+}
+
+async function openRate(matchId) {
+  clearInterval(timer);
+  view = 'rate:' + matchId;
+  Object.keys(mine).forEach(k => delete mine[k]);
+  try {
+    const saved = JSON.parse(localStorage.getItem(`nowsix-rate-${tid}-${matchId}`) || '{}');
+    Object.assign(mine, saved);
+  } catch (e) {}
+  await loadAvgs(matchId).catch(() => {});
+  render();
+  window.scrollTo(0, 0);
+}
+
+function closeRate() { view = 'live'; schedule(); render(); }
+
+function setRate(pid, v, btn) {
+  mine[pid] = v;
+  btn.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === v));
+}
+
+function renderRate(matchId) {
+  const row = rows.find(r => r.match_id === matchId);
+  if (!row) { closeRate(); return; }
+  const d = row.data;
+  document.getElementById('tabs').innerHTML = `<button class="tab" onclick="closeRate()">← Back</button>`;
+  const players = d.players || [];
+  show(`<div class="card"><div class="bar"></div><div class="pad">
+    <div class="stage">${esc(d.stage)} · ${esc(d.a.code)} v ${esc(d.b.code)}</div>
+    <div class="res" style="margin-top:4px">${esc(d.result || '')}</div>
+    <p class="muted">Rate each player from 1 to 10 for this match. Skip anyone you didn't see.</p>
+    ${players.map(p => {
+      const a = avgs[p.id];
+      return `<div style="padding:10px 0;border-top:1px solid var(--border)">
+        <div class="row"><span class="grow"><b>${esc(p.name)}</b> <span class="muted">${esc(p.team)} · ${esc(p.line)}</span></span>
+          ${a ? `<span class="avg">★ ${(+a.avg).toFixed(1)}</span><span class="muted">&nbsp;(${a.votes})</span>` : ''}</div>
+        <div class="rate">${[1,2,3,4,5,6,7,8,9,10].map(v =>
+          `<button type="button" data-v="${v}" class="${mine[p.id] === v ? 'on' : ''}" onclick="setRate('${esc(p.id)}',${v},this)">${v}</button>`).join('')}</div>
+      </div>`;
+    }).join('')}
+    <button class="go" id="rsend" style="margin-top:14px" onclick="sendRate('${esc(matchId)}')">Send my ratings</button>
+    <div class="err" id="rerr"></div>
+  </div></div>`);
+}
+
+async function sendRate(matchId) {
+  const ids = Object.keys(mine);
+  const err = document.getElementById('rerr');
+  if (!ids.length) { err.textContent = 'Tap a number for at least one player.'; return; }
+  const btn = document.getElementById('rsend');
+  btn.disabled = true; btn.textContent = 'Sending…'; err.textContent = '';
+  try {
+    const s = await fanSession();
+    const body = ids.map(pid => ({user_id: s.user, tournament_id: tid, match_id: matchId, player_id: pid, rating: mine[pid]}));
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/fan_ratings?on_conflict=user_id,tournament_id,match_id,player_id`, {
+      method: 'POST',
+      headers: {apikey: KEY, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    localStorage.setItem(`nowsix-rate-${tid}-${matchId}`, JSON.stringify(mine));
+    await loadAvgs(matchId).catch(() => {});
+    renderRate(matchId);
+    const ok = document.getElementById('rerr');
+    ok.style.color = 'var(--green)'; ok.textContent = '✅ Thanks! Your ratings are in. You can change them any time.';
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Send my ratings';
+    err.textContent = 'Could not send. Check the internet and try again.';
+  }
 }
 
 // ---- Player registration form (?reg=1) --------------------------------
