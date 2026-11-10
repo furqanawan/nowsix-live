@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NowSix Live</title>
+<meta name="theme-color" content="#0B1418">
+<meta property="og:title" content="NowSix Live — scores, table, results">
+<meta property="og:description" content="Ball-by-ball live cricket scores. Score It. Share It. Own It.">
+<style>
+  :root{
+    --bg:#0B1418;--surface:#121E24;--surface2:#18272E;--border:#22343C;
+    --text:#EAF4F2;--soft:#B9C9C6;--muted:#7F9693;--green:#3AF0A0;--cyan:#22C7E8;
+    --wicket:#FF8A3D;--grad:linear-gradient(90deg,#3AF0A0,#22C7E8);
+  }
+  @media (prefers-color-scheme: light){
+    :root{--bg:#F4F8F7;--surface:#FFFFFF;--surface2:#EEF4F3;--border:#DCE7E5;
+      --text:#0B1418;--soft:#34474A;--muted:#6B7F80;--green:#0FA968;--cyan:#0A93B3;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:16px 14px 40px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .logo{font-weight:900;letter-spacing:.5px;font-size:13px;padding:4px 8px;border-radius:8px;
+    background:var(--grad);color:#07202A}
+  h1{font-size:21px;margin:4px 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:22px 0 8px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:12px}
+  .card .bar{height:4px;background:var(--grad)}
+  .pad{padding:14px 16px}
+  .row{display:flex;align-items:center;gap:8px}
+  .grow{flex:1;min-width:0}
+  .pill{font-size:11px;font-weight:800;padding:3px 8px;border-radius:99px;background:rgba(255,138,61,.15);color:var(--wicket)}
+  .pill.live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;
+    background:var(--wicket);margin-right:5px;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .stage{font-size:12px;color:var(--muted)}
+  .team{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
+  .team .nm{font-weight:700}
+  .team .sc{font-weight:900;font-size:24px;font-variant-numeric:tabular-nums}
+  .team .ov{color:var(--muted);font-size:13px;margin-left:6px}
+  .team.dim .nm,.team.dim .sc{color:var(--soft);font-weight:600}
+  .team.dim .sc{font-size:18px}
+  .need{color:var(--green);font-weight:700;margin-top:8px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chip{background:var(--surface2);border-radius:10px;padding:5px 9px;font-size:12px;color:var(--muted)}
+  .chip b{color:var(--text);margin-left:4px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th{font-size:11px;color:var(--muted);font-weight:700;text-align:right;padding:6px 4px}
+  td{padding:7px 4px;text-align:right;border-top:1px solid var(--border);font-size:14px}
+  th:first-child,td:first-child{text-align:left}
+  td.strong{font-weight:800}
+  .balls{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+  .b{min-width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:800;background:var(--surface2);color:var(--soft);padding:0 6px}
+  .b.four{background:rgba(34,199,232,.18);color:var(--cyan)}
+  .b.six{background:rgba(58,240,160,.18);color:var(--green)}
+  .b.w{background:var(--wicket);color:#fff}
+  .b.sep{background:none;min-width:8px;color:var(--muted)}
+  .res{font-weight:700;color:var(--green);margin-top:8px}
+  .list .item{padding:10px 16px;border-top:1px solid var(--border)}
+  .list .item:first-child{border-top:none}
+  .muted{color:var(--muted);font-size:12px}
+  .fh{display:inline-block;margin-top:8px;font-size:11px;font-weight:900;letter-spacing:.8px;
+    padding:3px 9px;border-radius:99px;background:var(--grad);color:#07202A}
+  .empty{color:var(--muted);text-align:center;padding:40px 10px}
+  footer{margin-top:30px;text-align:center;color:var(--muted);font-size:12px}
+  footer a{color:var(--cyan);text-decoration:none}
+  .tabs{display:flex;gap:6px;margin:6px 0 4px;flex-wrap:wrap}
+  .tab{border:1px solid var(--border);background:var(--surface);color:var(--soft);border-radius:99px;
+    padding:6px 12px;font-size:13px;cursor:pointer}
+  .tab.on{background:var(--grad);color:#07202A;border-color:transparent;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="logo">NowSix</span><span class="muted" id="status">Connecting…</span></header>
+  <h1 id="title">Live scores</h1>
+  <div class="sub" id="updated"></div>
+  <div class="tabs" id="tabs"></div>
+  <div id="app"><div class="empty">Loading…</div></div>
+  <footer>Scored with <a href="https://play.google.com/store/search?q=NowSix&c=apps">NowSix</a> · Score It. Share It. Own It.</footer>
+</div>
+<script>
+const SUPABASE_URL = 'https://ucelceflwdngfbzibnok.supabase.co';
+const KEY = 'sb_publishable_3I-qLBlxxieSUjIKA4UtvQ_vSbct9b-';
+const tid = new URLSearchParams(location.search).get('t');
+let view = new URLSearchParams(location.search).get('v') || 'live', rows = [], timer = null, lastOk = 0;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTime = iso => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString([], {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+};
+
+async function load() {
+  if (!tid) { show('<div class="empty">This link is missing the tournament. Ask the organiser for the full link.</div>'); return; }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/live_matches?tournament_id=eq.${encodeURIComponent(tid)}&select=match_id,status,data,updated_at`,
+      {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}});
+    if (!r.ok) throw new Error(r.status);
+    rows = await r.json();
+    lastOk = Date.now();
+    document.getElementById('status').textContent = 'Live · updates every few seconds';
+    render();
+  } catch (e) {
+    document.getElementById('status').textContent = 'Reconnecting…';
+  }
+}
+
+function show(html) { document.getElementById('app').innerHTML = html; }
+
+function ballChip(l) {
+  const cls = l === 'W' ? 'w' : (l === '4' ? 'four' : (l === '6' ? 'six' : ''));
+  return `<span class="b ${cls}">${esc(l === '0' ? '•' : l)}</span>`;
+}
+
+function matchCard(d, status) {
+  const live = status === 'live';
+  const inns = d.innings || [];
+  const teams = [d.a, d.b];
+  const lines = inns.filter(i => !i.so).map((i, k) => {
+    const cur = live && k === inns.filter(x => !x.so).length - 1;
+    return `<div class="team ${cur || !live ? '' : 'dim'}"><span class="nm">${esc(i.name)}</span>
+      <span><span class="sc">${esc(i.score)}</span><span class="ov">(${esc(i.overs)}/${esc(i.limit)})</span></span></div>`;
+  }).join('');
+  const notBatted = teams.filter(t => !inns.some(i => i.team === t.code))
+    .map(t => `<div class="team dim"><span class="nm">${esc(t.name)}</span><span class="muted">${live ? 'Yet to bat' : ''}</span></div>`).join('');
+  const so = inns.filter(i => i.so).map(i => `<div class="muted">Super Over · ${esc(i.team)} ${esc(i.score)}</div>`).join('');
+  let now = '';
+  const n = d.now;
+  if (live && n) {
+    const bat = p => p ? `<tr><td class="strong">${esc(p.name)}${p === n.striker ? ' *' : ''}</td><td class="strong">${p.r}</td><td>${p.b}</td><td>${p.f}</td><td>${p.s}</td></tr>` : '';
+    const bw = n.bowler ? `<tr><td class="strong">${esc(n.bowler.name)}</td><td>${esc(n.bowler.o)}</td><td>${n.bowler.r}</td><td class="strong">${n.bowler.w}</td><td></td></tr>` : '';
+    now = `
+      ${n.need != null && n.need > 0 ? `<div class="need">Need ${n.need} from ${n.ballsLeft} ball${n.ballsLeft === 1 ? '' : 's'}</div>` : ''}
+      ${n.freeHit ? '<span class="fh">FREE HIT</span>' : ''}
+      <div class="chips"><span class="chip">CRR<b>${esc(n.crr)}</b></span>${n.rrr ? `<span class="chip">RRR<b>${esc(n.rrr)}</b></span>` : ''}</div>
+      <table style="margin-top:12px"><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr>${bat(n.striker)}${bat(n.nonStriker)}</table>
+      <table style="margin-top:6px"><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th></th></tr>${bw}</table>
+      ${n.recent && n.recent.length ? `<div class="balls">${n.recent.map(ballChip).join('')}</div>` : ''}
+      ${n.lastWicket ? `<div class="muted" style="margin-top:8px">Last wicket: ${esc(n.lastWicket)}</div>` : ''}`;
+  }
+  return `<div class="card"><div class="bar"></div><div class="pad">
+    <div class="row"><span class="grow stage">${esc(d.stage)} · ${esc(d.a.code)} v ${esc(d.b.code)}</span>
+      ${live ? '<span class="pill live">LIVE</span>' : ''}</div>
+    ${lines}${notBatted}${so}${now}
+    ${d.result ? `<div class="res">${esc(d.result)}</div>` : ''}
+  </div></div>`;
+}
+
+function tableHtml(t) {
+  return `<div class="card"><div class="pad">
+    ${t.group ? `<div class="muted" style="margin-bottom:4px">${esc(t.group)}</div>` : ''}
+    <table><tr><th>#</th><th style="text-align:left">Team</th><th>P</th><th>W</th><th>L</th><th>NR</th><th>NRR</th><th>Pts</th></tr>
+    ${t.rows.map((r, i) => `<tr><td>${i + 1}</td><td style="text-align:left" class="strong">${esc(r.name)}</td>
+      <td>${r.p}</td><td>${r.w}</td><td>${r.l}</td><td>${r.nr}</td><td>${esc(r.nrr)}</td><td class="strong">${r.pts}</td></tr>`).join('')}
+    </table></div></div>`;
+}
+
+function leaders(title, list, unit) {
+  if (!list || !list.length) return '';
+  return `<h2>${title}</h2><div class="card list">${list.map((p, i) =>
+    `<div class="item row"><span class="grow"><b>${i + 1}. ${esc(p.name)}</b> <span class="muted">${esc(p.team)}</span></span><b>${p.v}</b><span class="muted">${unit}</span></div>`).join('')}</div>`;
+}
+
+function render() {
+  const ov = rows.find(r => r.match_id === '_t');
+  const o = ov ? ov.data : null;
+  if (o) { document.getElementById('title').textContent = o.name; document.title = `${o.name} · NowSix Live`; }
+  const newest = rows.reduce((a, r) => (r.updated_at > a ? r.updated_at : a), '');
+  document.getElementById('updated').textContent = newest ? `Last update ${fmtTime(newest)}` : '';
+  const matches = rows.filter(r => r.match_id !== '_t')
+    .sort((a, b) => (a.status === 'live' ? -1 : 0) - (b.status === 'live' ? -1 : 0) || b.data.no - a.data.no);
+  const live = matches.filter(m => m.status === 'live');
+  const tabs = [['live', live.length ? `Live (${live.length})` : 'Matches'], ['table', 'Table'], ['results', 'Results'], ['stats', 'Stats']];
+  document.getElementById('tabs').innerHTML = tabs.map(([k, l]) =>
+    `<button class="tab ${view === k ? 'on' : ''}" onclick="view='${k}';render()">${l}</button>`).join('');
+  if (!ov && !matches.length) {
+    show('<div class="empty">Nothing here yet. Scores appear as soon as the organiser starts a match.</div>');
+    return;
+  }
+  let html = '';
+  if (view === 'live') {
+    html += matches.length ? matches.map(m => matchCard(m.data, m.status)).join('')
+      : '<div class="empty">No match today. Check the fixtures below.</div>';
+    if (o && o.next.length) {
+      html += `<h2>Next matches</h2><div class="card list">${o.next.map(m =>
+        `<div class="item"><b>${esc(m.a.name)} v ${esc(m.b.name)}</b><div class="muted">${esc(m.stage)}${m.at ? ' · ' + esc(fmtTime(m.at)) : ''}</div></div>`).join('')}</div>`;
+    }
+  } else if (view === 'table' && o) {
+    html += o.tables.map(tableHtml).join('');
+  } else if (view === 'results' && o) {
+    html += o.results.length ? `<div class="card list">${o.results.map(m =>
+      `<div class="item"><div class="muted">${esc(m.stage)} · ${esc(m.a.code)} v ${esc(m.b.code)}</div><b>${esc(m.text)}</b></div>`).join('')}</div>`
+      : '<div class="empty">No results yet.</div>';
+  } else if (view === 'stats' && o) {
+    html += leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
+    if (!html) html = '<div class="empty">Stats appear after the first match.</div>';
+  }
+  show(html);
+}
+
+function schedule() {
+  clearInterval(timer);
+  if (document.visibilityState === 'visible') {
+    load();
+    timer = setInterval(load, 5000);
+  }
+}
+document.addEventListener('visibilitychange', schedule);
+schedule();
+</script>
+</body>
+</html>
