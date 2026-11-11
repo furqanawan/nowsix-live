@@ -8,7 +8,11 @@ name: Keep Supabase awake
 on:
   schedule:
     - cron: '17 6 * * 1,4' # Monday and Thursday, 06:17 UTC (09:17 Jeddah)
+    - cron: '41 6 1 * *' # 1st of every month: keep the repo itself active
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   ping:
@@ -23,3 +27,19 @@ jobs:
             -H "apikey: $KEY")
           echo "Supabase answered HTTP $code"
           test "$code" = "200"
+
+  # GitHub pauses scheduled jobs in a repo with no commits for 60 days.
+  # A small monthly commit keeps this workflow running for good.
+  stay-active:
+    if: github.event.schedule == '41 6 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Note the date of this check
+        run: |
+          date -u +"%Y-%m-%d %H:%M UTC" > .github/last-check.txt
+          git config user.name "nowsix-keepalive"
+          git config user.email "keepalive@users.noreply.github.com"
+          git add .github/last-check.txt
+          git commit -m "Monthly keep-alive check" || exit 0
+          git push
