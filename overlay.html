@@ -102,15 +102,17 @@ function render(d) {
   const batTeam = teams.find(t => t && t.code === cur.team) || teams[0] || {};
   const col = batTeam.color || hue(batTeam.code);
   const n = d.now || {};
-  const bat = p => p ? `<span class="${p === n.striker ? 'on' : ''}">${esc(p.name)} <b>${p.r}${p.out ? '' : '*'}</b> (${p.b})</span>` : '';
-  const recent = (n.recent || []).slice(-6);
+  const bat = p => p ? `<span class="${p === n.striker ? 'on' : ''}">${esc(p.name)} <b>${p.r}</b> (${p.b})</span>` : '';
+  // app sends newest first; show oldest → newest
+  const latest = (n.recent || [])[0];
+  const recent = (n.recent || []).slice(0, 6).reverse();
   bar.innerHTML = `
     <div class="team" style="background:${col}">${esc(batTeam.code || cur.team)}</div>
     <div class="score">${esc(cur.score)}</div>
     <div class="overs">${esc(cur.overs)}${cur.limit ? ` / ${esc(cur.limit)}` : ''}</div>
     <div class="bats">${bat(n.striker)}${bat(n.nonStriker)}</div>
     ${n.bowler ? `<div class="bowl">${esc(n.bowler.name)} <b>${n.bowler.w}-${n.bowler.r}</b> <i>(${esc(n.bowler.o)})</i></div>` : ''}
-    ${recent.length ? `<div class="balls">${recent.map(l => `<span class="ball ${ballCls(l)}">${esc(l === '0' ? '•' : l)}</span>`).join('')}</div>` : ''}
+    ${recent.length ? `<div class="balls">${recent.map(l => `<span class="ball ${ballCls(l)}">${esc(l)}</span>`).join('')}</div>` : ''}
     <div class="brand">NOWSIX</div>`;
   bar.classList.add('on');
 
@@ -124,7 +126,7 @@ function render(d) {
   // C · pop-ups when a new ball arrives
   const key = `${inns.length}|${cur.score}|${cur.overs}`;
   if (last && last.key !== key && recent.length) {
-    const ball = recent[recent.length - 1];
+    const ball = latest;
     const s = n.striker;
     const prev = last.runs[s && s.name];
     if (s && prev != null && prev < 100 && s.r >= 100) popup('ms', 'HUNDRED', `${s.name} · ${s.r} (${s.b})`);
@@ -155,15 +157,15 @@ async function load() {
 // ---- demo: sample match so the overlay can be placed before the game ----
 let demoState = {r: 136, w: 3, balls: 95, s: 52, sb: 35, ns: 22, nb: 18, br: 22, bw: 1};
 function demoTick() {
-  const seq = ['1', '4', '0', '6', 'W', '2', '1', '6'];
+  const seq = ['1', '4', '•', '6', 'W', '2', '1', '6'];
   const l = seq[Math.floor(Math.random() * seq.length)];
   const d = demoState;
   d.balls++;
   if (l === 'W') { d.w++; d.bw++; d.s = 0; d.sb = 0; }
-  else { const n = +l; d.r += n; d.s += n; d.br += n; }
+  else { const n = +l || 0; d.r += n; d.s += n; d.br += n; }
   d.sb++;
   const ov = `${Math.floor(d.balls / 6)}.${d.balls % 6}`;
-  demoState.recent = [...(demoState.recent || ['1', '0', '4']), l].slice(-6);
+  demoState.recent = [l, ...(demoState.recent || ['4', '•', '1'])].slice(0, 6);
   render({
     a: {code: 'JF', name: 'Jeddah Falcons', color: '#0E9FB8'}, b: {code: 'RR', name: 'Riyadh Royals', color: '#7C5CFF'},
     innings: [{team: 'RR', name: 'Riyadh Royals', score: '181/6', overs: '20.0', limit: 20}, {team: 'JF', name: 'Jeddah Falcons', score: `${d.r}/${d.w}`, overs: ov, limit: 20}],
