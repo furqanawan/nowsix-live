@@ -117,6 +117,8 @@ const fmtTime = iso => {
 };
 
 async function load() {
+  const join = (new URLSearchParams(location.search).get('join') || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (!tid && join) { show(`<div class="empty">Scorer code <b style="font-size:1.6em;letter-spacing:.25em">${esc(join)}</b><br><br>Open the NowSix app → Join → Scan QR, or type this code.</div>`); return; }
   if (!tid) { show('<div class="empty">This link is missing the tournament. Ask the organiser for the full link.</div>'); return; }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/live_matches?tournament_id=eq.${encodeURIComponent(tid)}&select=match_id,status,data,updated_at`,
