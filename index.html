@@ -438,8 +438,9 @@ async function loadReg() {
       `<button type="button" class="${form[key] === v ? 'on' : ''}" onclick="form['${key}']='${v}';this.parentNode.querySelectorAll('button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${l}</button>`).join('')}</div>`;
     show(`<div class="card"><div class="pad"><form onsubmit="return sendReg(event)">
       <div class="f"><label>Full name *</label><input id="rn" maxlength="60" autocomplete="name" required></div>
-      <div class="f"><label>Team *</label><select id="rt" required><option value="">Choose your team</option>
-        ${teams.map(x => `<option value="${esc(x.id)}" ${x.full ? 'disabled' : ''}>${esc(x.name)}${x.full ? ' (squad full)' : ''}</option>`).join('')}</select></div>
+      ${o.auction ? `<div class="f"><label>Team</label><div class="muted">🔨 Teams are picked by player auction — you join the auction pool.</div><input type="hidden" id="rt" value="_auction"></div>`
+        : `<div class="f"><label>Team *</label><select id="rt" required><option value="">Choose your team</option>
+        ${teams.map(x => `<option value="${esc(x.id)}" ${x.full ? 'disabled' : ''}>${esc(x.name)}${x.full ? ' (squad full)' : ''}</option>`).join('')}</select></div>`}
       <div class="f"><label>Role</label>${seg('role', [['bat', 'Batter'], ['bowl', 'Bowler'], ['all', 'All-rounder'], ['wk', 'Keeper']])}</div>
       <div class="f"><label>Batting hand</label>${seg('hand', [['R', 'Right'], ['L', 'Left']])}</div>
       <div class="f"><label>Mobile (optional, for the organiser)</label><input id="rp" type="tel" maxlength="20" autocomplete="tel"></div>
@@ -464,13 +465,13 @@ async function sendReg(ev) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/registrations`, {
       method: 'POST',
       headers: {apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal'},
-      body: JSON.stringify({tournament_id: tid, team_id: team, name, role: form.role || null,
+      body: JSON.stringify({tournament_id: tid, team_id: team === '_auction' ? null : team, name, role: form.role || null,
         bat_hand: form.hand, phone: phone || null}),
     });
     if (!r.ok) throw new Error(await r.text());
     localStorage.setItem('nowsix-reg-' + tid, '1');
     show(`<div class="card"><div class="pad"><div class="ok">✅</div>
-      <p style="text-align:center"><b>${esc(name)}</b>, your registration is sent.<br>The organiser will confirm you in the squad.</p></div></div>`);
+      <p style="text-align:center"><b>${esc(name)}</b>, your registration is sent.<br>${team === '_auction' ? 'You are in the auction pool. Good luck!' : 'The organiser will confirm you in the squad.'}</p></div></div>`);
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Send registration';
     err.textContent = 'Could not send. Registration may be closed, or there is no internet. Try again.';
