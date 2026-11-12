@@ -61,6 +61,15 @@
   .b.sep{background:none;min-width:8px;color:var(--muted)}
   .res{font-weight:700;color:var(--green);margin-top:8px}
   .list .item{padding:10px 16px;border-top:1px solid var(--border)}
+  .poll{padding:14px 16px}
+  .poll .q{font-weight:700;margin-bottom:10px}
+  .opt{position:relative;display:block;width:100%;text-align:left;margin:6px 0;padding:11px 12px;border-radius:10px;
+    border:1px solid var(--border);background:var(--surface2);color:var(--text);font:inherit;cursor:pointer;overflow:hidden}
+  .opt:disabled{cursor:default}
+  .opt .fill{position:absolute;inset:0 auto 0 0;background:rgba(58,240,160,.16);transition:width .5s}
+  .opt.mine{border-color:var(--green)}
+  .opt span{position:relative}
+  .opt .pc{float:right;font-weight:700}
   .list .item:first-child{border-top:none}
   .muted{color:var(--muted);font-size:12px}
   .fh{display:inline-block;margin-top:8px;font-size:11px;font-weight:900;letter-spacing:.8px;
@@ -132,6 +141,7 @@ async function load() {
       return;
     }
     document.getElementById('status').textContent = 'Live · updates every few seconds';
+    if (view === 'polls' && Date.now() - pollsAt > 30000) loadPolls();
     render();
   } catch (e) {
     document.getElementById('status').textContent = 'Reconnecting…';
@@ -206,8 +216,9 @@ function render() {
     .sort((a, b) => (a.status === 'live' ? -1 : 0) - (b.status === 'live' ? -1 : 0) || b.data.no - a.data.no);
   const live = matches.filter(m => m.status === 'live');
   const tabs = [['live', live.length ? `Live (${live.length})` : 'Matches'], ['table', 'Table'], ['results', 'Results'], ['stats', 'Stats']];
+  if (o && o.polls && o.polls.length) tabs.push(['polls', '🗳 Polls']);
   document.getElementById('tabs').innerHTML = tabs.map(([k, l]) =>
-    `<button class="tab ${view === k ? 'on' : ''}" onclick="view='${k}';render()">${l}</button>`).join('');
+    `<button class="tab ${view === k ? 'on' : ''}" onclick="view='${k}';${k === 'polls' ? 'loadPolls();' : ''}render()">${l}</button>`).join('');
   if (!ov && !matches.length) {
     show('<div class="empty">Nothing here yet. Scores appear as soon as the organiser starts a match.</div>');
     return;
@@ -227,6 +238,9 @@ function render() {
     html += o.results.length ? `<div class="card list">${o.results.map(m =>
       `<div class="item"><div class="muted">${esc(m.stage)} · ${esc(m.a.code)} v ${esc(m.b.code)}</div><b>${esc(m.text)}</b></div>`).join('')}</div>`
       : '<div class="empty">No results yet.</div>';
+  } else if (view === 'polls' && o) {
+    if (!pollsLoaded) loadPolls();
+    html += (o.polls || []).map(pollCard).join('') || '<div class="empty">No polls right now.</div>';
   } else if (view === 'stats' && o) {
     html += leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
     if (!html) html = '<div class="empty">Stats appear after the first match.</div>';
@@ -333,6 +347,64 @@ async function sendRate(matchId) {
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Send my ratings';
     err.textContent = 'Could not send. Check the internet and try again.';
+  }
+}
+
+// ---- Fan polls ---------------------------------------------------------
+let pollCounts = {}, pollsLoaded = false, pollsAt = 0;
+const myVotes = (() => { try { return JSON.parse(localStorage.getItem(`nowsix-polls-${tid}`) || '{}'); } catch (e) { return {}; } })();
+
+async function loadPolls() {
+  pollsLoaded = true; pollsAt = Date.now();
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/poll_counts?tournament_id=eq.${encodeURIComponent(tid)}&select=poll_id,choice,votes`,
+      {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}});
+    if (!r.ok) return;
+    pollCounts = {};
+    for (const x of await r.json()) (pollCounts[x.poll_id] ||= [0, 0, 0, 0])[x.choice] = x.votes;
+    if (view === 'polls') render();
+  } catch (e) {}
+}
+
+function pollCard(p) {
+  const counts = pollCounts[p.id] || [0, 0, 0, 0];
+  const total = p.opts.reduce((a, _, i) => a + (counts[i] || 0), 0);
+  const mine = myVotes[p.id];
+  const showRes = mine != null || !p.open;
+  return `<div class="card"><div class="poll"><div class="q">${esc(p.q)}</div>
+    ${p.opts.map((o, i) => {
+      const pc = total ? Math.round((counts[i] || 0) * 100 / total) : 0;
+      return `<button class="opt ${mine === i ? 'mine' : ''}" ${p.open ? '' : 'disabled'} onclick="vote('${esc(p.id)}',${i})">
+        ${showRes ? `<div class="fill" style="width:${pc}%"></div>` : ''}
+        <span>${mine === i ? '✓ ' : ''}${esc(o)}</span>${showRes ? `<span class="pc">${pc}%</span>` : ''}</button>`;
+    }).join('')}
+    <div class="muted" style="margin-top:6px">${total} vote${total === 1 ? '' : 's'}${p.open ? (mine != null ? ' · tap another answer to change' : '') : ' · closed'}</div>
+    <div class="err" id="perr-${esc(p.id)}"></div>
+  </div></div>`;
+}
+
+async function vote(pollId, choice) {
+  const prev = myVotes[pollId];
+  if (prev === choice) return;
+  try {
+    const s = await fanSession();
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/poll_votes?on_conflict=user_id,tournament_id,poll_id`, {
+      method: 'POST',
+      headers: {apikey: KEY, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify({user_id: s.user, tournament_id: tid, poll_id: pollId, choice}),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const c = (pollCounts[pollId] ||= [0, 0, 0, 0]);   // show it at once
+    if (prev != null && c[prev] > 0) c[prev]--;
+    c[choice]++;
+    myVotes[pollId] = choice;
+    localStorage.setItem(`nowsix-polls-${tid}`, JSON.stringify(myVotes));
+    render();
+    setTimeout(loadPolls, 1500);
+  } catch (e) {
+    const el = document.getElementById('perr-' + pollId);
+    if (el) el.textContent = 'Could not send your vote. Check the internet and try again.';
   }
 }
 
