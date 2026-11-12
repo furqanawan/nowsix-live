@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NowSix · Stream overlay</title>
+<!--
+  Live-stream score overlay for OBS / Streamlabs / Prism (Browser Source).
+  Recommended source size: 1920 × 1080. Background is transparent.
+
+  Link options:
+    t=<tournament id>   required (from the app: ⋮ → Share & export → Stream overlay)
+    m=<match id>        optional: stick to one match (default: the live one)
+    pos=top             bar at the top instead of the bottom
+    bg=green            green background, for apps without transparency (chroma key)
+    pop=0               no FOUR / SIX / WICKET pop-ups
+    demo=1              sample data, to place the overlay before the match
+-->
+<style>
+  :root { --u: min(1vw, 1.78vh); --ink:#10131C; --panel:#14202E; --panel2:#1A2030; --soft:#C9CEDA; --mint:#3AF0A0; }
+  html, body { margin:0; background:transparent; overflow:hidden; height:100%;
+    font-family: "IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif; }
+  body.green { background:#00B140; }
+  #bar { position:fixed; left:calc(2.2*var(--u)); right:calc(2.2*var(--u)); bottom:calc(2.6*var(--u));
+    display:flex; align-items:stretch; height:calc(4.4*var(--u)); border-radius:calc(.6*var(--u));
+    overflow:hidden; color:#fff; font-size:calc(1.55*var(--u)); box-shadow:0 calc(.4*var(--u)) calc(1.6*var(--u)) #0007;
+    transform:translateY(160%); transition:transform .5s cubic-bezier(.2,.8,.2,1); }
+  body.top #bar { bottom:auto; top:calc(2.6*var(--u)); transform:translateY(-160%); }
+  #bar.on, body.top #bar.on { transform:none; }
+  #bar > div { display:flex; align-items:center; padding:0 calc(1.1*var(--u)); white-space:nowrap; }
+  .team { font-weight:800; letter-spacing:.04em; font-size:calc(1.7*var(--u)); }
+  .score { background:var(--ink); font-weight:800; font-size:calc(2.3*var(--u)); font-variant-numeric:tabular-nums; }
+  .overs { background:var(--panel2); color:var(--soft); font-variant-numeric:tabular-nums; }
+  .bats { background:var(--panel); flex:1; min-width:0; gap:calc(1.6*var(--u)); overflow:hidden; }
+  .bats span { overflow:hidden; text-overflow:ellipsis; }
+  .bats b { font-weight:800; }
+  .bats .on::before { content:""; display:inline-block; width:calc(.6*var(--u)); height:calc(.6*var(--u));
+    border-radius:50%; background:var(--mint); margin-right:calc(.5*var(--u)); vertical-align:middle; }
+  .bowl { background:var(--panel2); gap:calc(.6*var(--u)); }
+  .bowl i { font-style:normal; color:var(--soft); }
+  .brand { background:var(--ink); color:#8A97A8; font-size:calc(1.05*var(--u)); font-weight:700; letter-spacing:.08em; }
+  .balls { background:var(--panel); gap:calc(.35*var(--u)); }
+  .ball { width:calc(2.2*var(--u)); height:calc(2.2*var(--u)); border-radius:50%; background:#2A3245;
+    display:flex; align-items:center; justify-content:center; font-size:calc(1.1*var(--u)); font-weight:700; }
+  .ball.four { background:#2F80FF; } .ball.six { background:#FF8A3D; } .ball.w { background:#E5484D; }
+  #chip { position:fixed; right:calc(2.2*var(--u)); bottom:calc(7.6*var(--u)); color:#fff;
+    background:#10131CDD; border-radius:calc(.5*var(--u)); padding:calc(.5*var(--u)) calc(1*var(--u));
+    font-size:calc(1.3*var(--u)); font-weight:700; opacity:0; transition:opacity .4s; }
+  body.top #chip { bottom:auto; top:calc(7.6*var(--u)); }
+  #chip.on { opacity:1; } #chip.fh { background:#E5484D; }
+  #pop { position:fixed; left:50%; top:46%; transform:translate(-50%,-50%) scale(.4); opacity:0;
+    border-radius:calc(1*var(--u)); padding:calc(1.2*var(--u)) calc(3.6*var(--u)); text-align:center; color:var(--ink);
+    transition:transform .35s cubic-bezier(.2,1.6,.4,1), opacity .25s; box-shadow:0 calc(.6*var(--u)) calc(2.4*var(--u)) #0008; }
+  #pop.on { transform:translate(-50%,-50%) scale(1); opacity:1; }
+  #pop .big { font-size:calc(5.4*var(--u)); font-weight:900; line-height:1; letter-spacing:.02em; }
+  #pop .who { font-size:calc(1.5*var(--u)); font-weight:700; margin-top:calc(.4*var(--u)); }
+  #pop.six { background:#FF8A3D; } #pop.four { background:#3AF0A0; }
+  #pop.w { background:#E5484D; color:#fff; } #pop.ms { background:#F5C84C; }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="chip"></div>
+<div id="pop"><div class="big"></div><div class="who"></div></div>
+<script>
+const SUPABASE_URL = 'https://ucelceflwdngfbzibnok.supabase.co';
+const KEY = 'sb_publishable_3I-qLBlxxieSUjIKA4UtvQ_vSbct9b-';
+const q = new URLSearchParams(location.search);
+const tid = q.get('t'), onlyMatch = q.get('m'), demo = q.get('demo') === '1';
+const pops = q.get('pop') !== '0';
+if (q.get('pos') === 'top') document.body.classList.add('top');
+if (q.get('bg') === 'green') document.body.classList.add('green');
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// stable colour from a team code when the app did not send one
+const hue = code => { let h = 0; for (const ch of String(code)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 65% 42%)`; };
+
+let last = null;      // previous snapshot of the shown match
+let popTimer = null;
+
+function popup(kind, big, who) {
+  if (!pops) return;
+  const p = document.getElementById('pop');
+  p.className = kind;
+  p.querySelector('.big').textContent = big;
+  p.querySelector('.who').textContent = who || '';
+  requestAnimationFrame(() => p.classList.add('on'));
+  clearTimeout(popTimer);
+  popTimer = setTimeout(() => p.classList.remove('on'), 3200);
+}
+
+function ballCls(l) { return l === 'W' ? 'w' : l === '4' ? 'four' : l === '6' ? 'six' : ''; }
+
+function render(d) {
+  const bar = document.getElementById('bar'), chip = document.getElementById('chip');
+  if (!d) { bar.classList.remove('on'); chip.classList.remove('on'); last = null; return; }
+  const inns = (d.innings || []).filter(i => !i.so);
+  const cur = inns[inns.length - 1];
+  if (!cur) { bar.classList.remove('on'); return; }
+  const teams = [d.a, d.b];
+  const batTeam = teams.find(t => t && t.code === cur.team) || teams[0] || {};
+  const col = batTeam.color || hue(batTeam.code);
+  const n = d.now || {};
+  const bat = p => p ? `<span class="${p === n.striker ? 'on' : ''}">${esc(p.name)} <b>${p.r}${p.out ? '' : '*'}</b> (${p.b})</span>` : '';
+  const recent = (n.recent || []).slice(-6);
+  bar.innerHTML = `
+    <div class="team" style="background:${col}">${esc(batTeam.code || cur.team)}</div>
+    <div class="score">${esc(cur.score)}</div>
+    <div class="overs">${esc(cur.overs)}${cur.limit ? ` / ${esc(cur.limit)}` : ''}</div>
+    <div class="bats">${bat(n.striker)}${bat(n.nonStriker)}</div>
+    ${n.bowler ? `<div class="bowl">${esc(n.bowler.name)} <b>${n.bowler.w}-${n.bowler.r}</b> <i>(${esc(n.bowler.o)})</i></div>` : ''}
+    ${recent.length ? `<div class="balls">${recent.map(l => `<span class="ball ${ballCls(l)}">${esc(l === '0' ? '•' : l)}</span>`).join('')}</div>` : ''}
+    <div class="brand">NOWSIX</div>`;
+  bar.classList.add('on');
+
+  // chip: free hit, or what the chase needs
+  if (n.freeHit) { chip.textContent = 'FREE HIT'; chip.className = 'on fh'; }
+  else if (n.need != null && n.need > 0) {
+    chip.textContent = `Need ${n.need} off ${n.ballsLeft}${n.rrr ? ` · RRR ${n.rrr}` : ''}`;
+    chip.className = 'on';
+  } else chip.className = '';
+
+  // C · pop-ups when a new ball arrives
+  const key = `${inns.length}|${cur.score}|${cur.overs}`;
+  if (last && last.key !== key && recent.length) {
+    const ball = recent[recent.length - 1];
+    const s = n.striker;
+    const prev = last.runs[s && s.name];
+    if (s && prev != null && prev < 100 && s.r >= 100) popup('ms', 'HUNDRED', `${s.name} · ${s.r} (${s.b})`);
+    else if (s && prev != null && prev < 50 && s.r >= 50) popup('ms', 'FIFTY', `${s.name} · ${s.r} (${s.b})`);
+    else if (ball === '6') popup('six', 'SIX!', s ? `${s.name} · ${s.r} (${s.b})` : '');
+    else if (ball === '4') popup('four', 'FOUR!', s ? `${s.name} · ${s.r} (${s.b})` : '');
+    else if (ball === 'W') popup('w', 'WICKET', n.lastWicket || (n.bowler ? n.bowler.name : ''));
+  }
+  const runs = {};
+  for (const p of [n.striker, n.nonStriker]) if (p) runs[p.name] = p.r;
+  last = {key, runs};
+}
+
+async function load() {
+  if (!tid) return;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/live_matches?tournament_id=eq.${encodeURIComponent(tid)}&select=match_id,status,data,updated_at`,
+      {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}});
+    if (!r.ok) return;
+    const rows = await r.json();
+    const pick = onlyMatch
+      ? rows.find(x => x.match_id === onlyMatch)
+      : rows.filter(x => x.status === 'live').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0];
+    render(pick && pick.status === 'live' ? pick.data : (onlyMatch && pick ? pick.data : null));
+  } catch (e) { /* keep showing the last score */ }
+}
+
+// ---- demo: sample match so the overlay can be placed before the game ----
+let demoState = {r: 136, w: 3, balls: 95, s: 52, sb: 35, ns: 22, nb: 18, br: 22, bw: 1};
+function demoTick() {
+  const seq = ['1', '4', '0', '6', 'W', '2', '1', '6'];
+  const l = seq[Math.floor(Math.random() * seq.length)];
+  const d = demoState;
+  d.balls++;
+  if (l === 'W') { d.w++; d.bw++; d.s = 0; d.sb = 0; }
+  else { const n = +l; d.r += n; d.s += n; d.br += n; }
+  d.sb++;
+  const ov = `${Math.floor(d.balls / 6)}.${d.balls % 6}`;
+  demoState.recent = [...(demoState.recent || ['1', '0', '4']), l].slice(-6);
+  render({
+    a: {code: 'JF', name: 'Jeddah Falcons', color: '#0E9FB8'}, b: {code: 'RR', name: 'Riyadh Royals', color: '#7C5CFF'},
+    innings: [{team: 'RR', name: 'Riyadh Royals', score: '181/6', overs: '20.0', limit: 20}, {team: 'JF', name: 'Jeddah Falcons', score: `${d.r}/${d.w}`, overs: ov, limit: 20}],
+    now: {
+      striker: {name: d.w > 3 ? 'New batter' : 'Babar Azam', r: d.s, b: d.sb},
+      nonStriker: {name: 'Mohammad Rizwan', r: d.ns, b: d.nb},
+      bowler: {name: 'Jasprit Bumrah', o: '3.' + (d.balls % 6), r: d.br, w: d.bw},
+      need: Math.max(0, 182 - d.r), ballsLeft: Math.max(0, 120 - d.balls), rrr: (Math.max(0, 182 - d.r) * 6 / Math.max(1, 120 - d.balls)).toFixed(2),
+      recent: demoState.recent, lastWicket: 'Babar Azam b Bumrah',
+    },
+  });
+}
+
+if (demo) { demoTick(); setInterval(demoTick, 4000); }
+else { load(); setInterval(load, 4000); }
+</script>
+</body>
+</html>
