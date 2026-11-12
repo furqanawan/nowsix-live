@@ -61,6 +61,13 @@
   .b.sep{background:none;min-width:8px;color:var(--muted)}
   .res{font-weight:700;color:var(--green);margin-top:8px}
   .list .item{padding:10px 16px;border-top:1px solid var(--border)}
+  .presents{font-size:13px;color:var(--soft);margin:-4px 0 6px;display:flex;align-items:center;gap:8px}
+  .presents img{height:22px;max-width:120px;object-fit:contain;background:#fff;border-radius:4px;padding:2px 4px}
+  .spons{display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:12px;border-radius:14px;
+    background:var(--surface);border:1px solid var(--border);text-decoration:none;color:var(--text);min-height:44px}
+  .spons img{height:36px;max-width:110px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 6px}
+  .spons .k{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+  .spons b{display:block}
   .poll{padding:14px 16px}
   .poll .q{font-weight:700;margin-bottom:10px}
   .opt{position:relative;display:block;width:100%;text-align:left;margin:6px 0;padding:11px 12px;border-radius:10px;
@@ -106,6 +113,7 @@
 <div class="wrap">
   <header><span class="logo">NowSix</span><span class="muted" id="status">Connecting…</span></header>
   <h1 id="title">Live scores</h1>
+  <div class="presents" id="presents" hidden></div>
   <div class="sub" id="updated"></div>
   <div class="tabs" id="tabs"></div>
   <div id="app"><div class="empty">Loading…</div></div>
@@ -206,10 +214,41 @@ function leaders(title, list, unit) {
     `<div class="item row"><span class="grow"><b>${i + 1}. ${esc(p.name)}</b> <span class="muted">${esc(p.team)}</span></span><b>${p.v}</b><span class="muted">${unit}</span></div>`).join('')}</div>`;
 }
 
+// ---- Sponsors: "presented by" + a rotating slot ---------------------------
+const okUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+let spIdx = 0;
+function sponsorSlot(o) {
+  const list = ((o && o.sponsors) || []).filter(x => x.tier !== 'title');
+  if (!list.length) return '';
+  const x = list[spIdx % list.length];
+  const inner = `${okUrl(x.img) ? `<img src="${esc(okUrl(x.img))}" alt="" onerror="this.remove()">` : ''}
+    <span><span class="k">${x.tier === 'gold' ? 'Gold sponsor' : 'Partner'}</span><b>${esc(x.name)}</b>${x.tag ? `<span class="muted">${esc(x.tag)}</span>` : ''}</span>`;
+  return okUrl(x.url)
+    ? `<a class="spons" id="spons" href="${esc(okUrl(x.url))}" target="_blank" rel="noopener sponsored">${inner}</a>`
+    : `<div class="spons" id="spons">${inner}</div>`;
+}
+function showPresents(o) {
+  const el = document.getElementById('presents');
+  const t = ((o && o.sponsors) || []).find(x => x.tier === 'title');
+  if (!t) { el.hidden = true; return; }
+  el.hidden = false;
+  const logo = okUrl(t.img) ? `<img src="${esc(okUrl(t.img))}" alt="" onerror="this.remove()">` : '';
+  const name = okUrl(t.url) ? `<a href="${esc(okUrl(t.url))}" target="_blank" rel="noopener sponsored" style="color:inherit">${esc(t.name)}</a>` : esc(t.name);
+  el.innerHTML = `presented by ${logo} <b>${name}</b>`;
+}
+setInterval(() => {
+  const ov = rows.find(r => r.match_id === '_t');
+  const el = document.getElementById('spons');
+  if (!ov || !el) return;
+  spIdx++;
+  el.outerHTML = sponsorSlot(ov.data);
+}, 7000);
+
 function render() {
   const ov = rows.find(r => r.match_id === '_t');
   const o = ov ? ov.data : null;
   if (o) { document.getElementById('title').textContent = o.name; document.title = `${o.name} · NowSix Live`; }
+  showPresents(o);
   const newest = rows.reduce((a, r) => (r.updated_at > a ? r.updated_at : a), '');
   document.getElementById('updated').textContent = newest ? `Last update ${fmtTime(newest)}` : '';
   const matches = rows.filter(r => r.match_id !== '_t')
@@ -223,7 +262,7 @@ function render() {
     show('<div class="empty">Nothing here yet. Scores appear as soon as the organiser starts a match.</div>');
     return;
   }
-  let html = '';
+  let html = sponsorSlot(o);
   if (view.startsWith('rate:')) { renderRate(view.slice(5)); return; }
   if (view === 'live') {
     html += matches.length ? matches.map(m => matchCard(m.data, m.status, m.match_id)).join('')
@@ -242,8 +281,8 @@ function render() {
     if (!pollsLoaded) loadPolls();
     html += (o.polls || []).map(pollCard).join('') || '<div class="empty">No polls right now.</div>';
   } else if (view === 'stats' && o) {
-    html += leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
-    if (!html) html = '<div class="empty">Stats appear after the first match.</div>';
+    const st = leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
+    html += st || '<div class="empty">Stats appear after the first match.</div>';
   }
   show(html);
 }

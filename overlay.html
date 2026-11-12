@@ -38,7 +38,11 @@
     border-radius:50%; background:var(--mint); margin-right:calc(.5*var(--u)); vertical-align:middle; }
   .bowl { background:var(--panel2); gap:calc(.6*var(--u)); }
   .bowl i { font-style:normal; color:var(--soft); }
-  .brand { background:var(--ink); color:#8A97A8; font-size:calc(1.05*var(--u)); font-weight:700; letter-spacing:.08em; }
+  .brand { background:var(--ink); color:#8A97A8; font-size:calc(1.05*var(--u)); font-weight:700; letter-spacing:.08em;
+    gap:calc(.6*var(--u)); max-width:calc(16*var(--u)); }
+  .brand img { height:calc(2.8*var(--u)); max-width:calc(11*var(--u)); object-fit:contain; background:#fff;
+    border-radius:calc(.3*var(--u)); padding:calc(.2*var(--u)) calc(.4*var(--u)); }
+  .brand .sp { color:#fff; font-size:calc(1.3*var(--u)); letter-spacing:0; overflow:hidden; text-overflow:ellipsis; }
   .balls { background:var(--panel); gap:calc(.35*var(--u)); }
   .ball { width:calc(2.2*var(--u)); height:calc(2.2*var(--u)); border-radius:50%; background:#2A3245;
     display:flex; align-items:center; justify-content:center; font-size:calc(1.1*var(--u)); font-weight:700; }
@@ -77,6 +81,21 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 const hue = code => { let h = 0; for (const ch of String(code)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 65% 42%)`; };
 
 let last = null;      // previous snapshot of the shown match
+let sponsors = [], spI = 0;   // from the tournament row, rotated in the bar
+const okUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
+function brandHtml() {
+  if (!sponsors.length) return 'NOWSIX';
+  const x = sponsors[spI % sponsors.length];
+  return okUrl(x.img)
+    ? `<img src="${esc(okUrl(x.img))}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span class="sp" style="display:none">${esc(x.name)}</span>`
+    : `<span class="sp">${esc(x.name)}</span>`;
+}
+setInterval(() => {
+  if (sponsors.length < 2) return;
+  spI++;
+  const el = document.querySelector('#bar .brand');
+  if (el) el.innerHTML = brandHtml();
+}, 8000);
 let popTimer = null;
 
 function popup(kind, big, who) {
@@ -113,7 +132,7 @@ function render(d) {
     <div class="bats">${bat(n.striker)}${bat(n.nonStriker)}</div>
     ${n.bowler ? `<div class="bowl">${esc(n.bowler.name)} <b>${n.bowler.w}-${n.bowler.r}</b> <i>(${esc(n.bowler.o)})</i></div>` : ''}
     ${recent.length ? `<div class="balls">${recent.map(l => `<span class="ball ${ballCls(l)}">${esc(l)}</span>`).join('')}</div>` : ''}
-    <div class="brand">NOWSIX</div>`;
+    <div class="brand">${brandHtml()}</div>`;
   bar.classList.add('on');
 
   // chip: free hit, or what the chase needs
@@ -147,6 +166,8 @@ async function load() {
       {headers: {apikey: KEY, Authorization: `Bearer ${KEY}`}});
     if (!r.ok) return;
     const rows = await r.json();
+    const ov = rows.find(x => x.match_id === '_t');
+    sponsors = (ov && ov.data && ov.data.sponsors) || [];
     const pick = onlyMatch
       ? rows.find(x => x.match_id === onlyMatch)
       : rows.filter(x => x.status === 'live').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0];
@@ -179,7 +200,10 @@ function demoTick() {
   });
 }
 
-if (demo) { demoTick(); setInterval(demoTick, 4000); }
+if (demo) {
+  sponsors = [{name: 'Al Baik', tier: 'title'}, {name: 'Jarir Bookstore', tier: 'gold'}];
+  demoTick(); setInterval(demoTick, 4000);
+}
 else { load(); setInterval(load, 4000); }
 </script>
 </body>
