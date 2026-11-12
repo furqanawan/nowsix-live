@@ -135,12 +135,16 @@ function render(d) {
     <div class="brand">${brandHtml()}</div>`;
   bar.classList.add('on');
 
-  // chip: free hit, or what the chase needs
+  // chip: free hit, or what the chase needs, plus the win chance
+  const winTxt = typeof d.win === 'number'
+    ? `${batTeam.code === (d.a || {}).code ? d.a.code : d.b.code} win ${batTeam.code === (d.a || {}).code ? d.win : 100 - d.win}%`
+    : '';
   if (n.freeHit) { chip.textContent = 'FREE HIT'; chip.className = 'on fh'; }
   else if (n.need != null && n.need > 0) {
-    chip.textContent = `Need ${n.need} off ${n.ballsLeft}${n.rrr ? ` · RRR ${n.rrr}` : ''}`;
+    chip.textContent = `Need ${n.need} off ${n.ballsLeft}${n.rrr ? ` · RRR ${n.rrr}` : ''}${winTxt ? ` · ${winTxt}` : ''}`;
     chip.className = 'on';
-  } else chip.className = '';
+  } else if (winTxt) { chip.textContent = winTxt; chip.className = 'on'; }
+  else chip.className = '';
 
   // C · pop-ups when a new ball arrives
   const key = `${inns.length}|${cur.score}|${cur.overs}`;
@@ -197,6 +201,7 @@ function demoTick() {
       need: Math.max(0, 182 - d.r), ballsLeft: Math.max(0, 120 - d.balls), rrr: (Math.max(0, 182 - d.r) * 6 / Math.max(1, 120 - d.balls)).toFixed(2),
       recent: demoState.recent, lastWicket: 'Babar Azam b Bumrah',
     },
+    win: Math.max(1, Math.min(99, Math.round(50 + (d.r - d.balls * 182 / 120) * 1.5 - (d.w - 3) * 8))),
   });
 }
 

@@ -68,6 +68,10 @@
   .spons img{height:36px;max-width:110px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 6px}
   .spons .k{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
   .spons b{display:block}
+  .win{margin-top:12px}
+  .win .lbl{display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-bottom:4px}
+  .win .bar2{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--surface2)}
+  .win .bar2 div{transition:width .5s}
   .poll{padding:14px 16px}
   .poll .q{font-weight:700;margin-bottom:10px}
   .opt{position:relative;display:block;width:100%;text-align:left;margin:6px 0;padding:11px 12px;border-radius:10px;
@@ -183,6 +187,12 @@ function matchCard(d, status, matchId) {
     now = `
       ${n.need != null && n.need > 0 ? `<div class="need">Need ${n.need} from ${n.ballsLeft} ball${n.ballsLeft === 1 ? '' : 's'}</div>` : ''}
       ${n.freeHit ? '<span class="fh">FREE HIT</span>' : ''}
+      ${typeof d.win === 'number' ? `<div class="win"><div class="lbl">
+        <span style="color:${esc(d.a.color || 'var(--green)')}">${esc(d.a.code)} ${d.win}%</span>
+        <span class="muted" style="font-weight:600">Win probability</span>
+        <span style="color:${esc(d.b.color || 'var(--cyan)')}">${100 - d.win}% ${esc(d.b.code)}</span></div>
+        <div class="bar2"><div style="width:${d.win}%;background:${esc(d.a.color || 'var(--green)')}"></div>
+        <div style="width:${100 - d.win}%;background:${esc(d.b.color || 'var(--cyan)')}"></div></div></div>` : ''}
       <div class="chips"><span class="chip">CRR<b>${esc(n.crr)}</b></span>${n.rrr ? `<span class="chip">RRR<b>${esc(n.rrr)}</b></span>` : ''}</div>
       <table style="margin-top:12px"><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr>${bat(n.striker)}${bat(n.nonStriker)}</table>
       <table style="margin-top:6px"><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th></th></tr>${bw}</table>
