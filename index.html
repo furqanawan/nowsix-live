@@ -231,6 +231,15 @@ function fireList(list) {
       <span>${p.k === 'bat' ? `${+p.n} scores of 30+ in a row` : `wickets in ${+p.n} matches in a row`}</span></div>`).join('')}</div>`;
 }
 
+const BK = {six: 'six', fifty: 'fifty', hundred: 'hundred', threeFor: '3-wicket haul',
+  fiveFor: '5-wicket haul', hatTrick: 'hat-trick', maiden: 'maiden over'};
+function bountyList(list) {
+  if (!list || !list.length) return '';
+  return `<h2>💰 Bounties</h2><div class="card list">${list.map(b =>
+    `<div class="item row"><span class="grow"><b>First ${esc(BK[b.k] || b.k)}</b> <span class="muted">${esc(b.p)}</span></span>
+      <span>${b.w ? `🏆 ${esc(b.w)}` : '<span class="muted">Up for grabs</span>'}</span></div>`).join('')}</div>`;
+}
+
 // ---- Sponsors: "presented by" + a rotating slot ---------------------------
 const okUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
 let spIdx = 0;
@@ -298,7 +307,7 @@ function render() {
     if (!pollsLoaded) loadPolls();
     html += (o.polls || []).map(pollCard).join('') || '<div class="empty">No polls right now.</div>';
   } else if (view === 'stats' && o) {
-    const st = fireList(o.fire) + leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
+    const st = bountyList(o.bounties) + fireList(o.fire) + leaders('Most runs', o.runs, ' runs') + leaders('Most wickets', o.wickets, ' wkts');
     html += st || '<div class="empty">Stats appear after the first match.</div>';
   }
   show(html);
