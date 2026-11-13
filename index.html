@@ -111,6 +111,11 @@
   .rate button{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
     color:var(--soft);font-weight:700;font-size:13px;cursor:pointer;padding:0}
   .rate button.on{background:var(--grad);color:#07202A;border-color:transparent}
+  .react{display:flex;gap:8px;margin-top:10px}
+  .react button{flex:1;font-size:22px;padding:8px 0;border-radius:12px;border:1px solid var(--border);
+    background:var(--surface2);cursor:pointer;transition:transform .12s}
+  .react button:active{transform:scale(1.25)}
+  .react button.sent{border-color:var(--green)}
   .ratebtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);
     background:var(--surface2);color:var(--text);font-weight:700;cursor:pointer}
   .avg{color:var(--cyan);font-weight:800}
@@ -218,6 +223,8 @@ function matchCard(d, status, matchId) {
     ${lines}${notBatted}${so}${now}
     ${d.result ? `<div class="res">${esc(d.result)}</div>` : ''}
     ${d.potm && d.potm.name ? `<div class="muted" style="margin-top:6px">⭐ Player of the match: <b>${esc(d.potm.name)}</b></div>` : ''}
+    ${live && matchId ? `<div class="react">${[['fire', '🔥'], ['clap', '👏'], ['wow', '😱']].map(([k, e]) =>
+      `<button aria-label="${k}" onclick="react(this,'${esc(matchId)}','${k}',${+d.balls || 0})">${e}</button>`).join('')}</div>` : ''}
     ${(d.players || []).length && matchId ? `<button class="ratebtn" onclick="openRate('${esc(matchId)}')">⭐ Rate the players</button>` : ''}
   </div></div>`;
 }
@@ -262,8 +269,9 @@ function sponsorSlot(o) {
   const x = list[spIdx % list.length];
   const inner = `${okUrl(x.img) ? `<img src="${esc(okUrl(x.img))}" alt="" onerror="this.remove()">` : ''}
     <span><span class="k">${x.tier === 'gold' ? 'Gold sponsor' : 'Partner'}</span><b>${esc(x.name)}</b>${x.tag ? `<span class="muted">${esc(x.tag)}</span>` : ''}</span>`;
+  spHit(x.id, false);
   return okUrl(x.url)
-    ? `<a class="spons" id="spons" href="${esc(okUrl(x.url))}" target="_blank" rel="noopener sponsored">${inner}</a>`
+    ? `<a class="spons" id="spons" href="${esc(okUrl(x.url))}" target="_blank" rel="noopener sponsored" onclick="spHit('${esc(x.id || '')}',true)">${inner}</a>`
     : `<div class="spons" id="spons">${inner}</div>`;
 }
 function showPresents(o) {
@@ -271,8 +279,9 @@ function showPresents(o) {
   const t = ((o && o.sponsors) || []).find(x => x.tier === 'title');
   if (!t) { el.hidden = true; return; }
   el.hidden = false;
+  spHit(t.id, false);
   const logo = okUrl(t.img) ? `<img src="${esc(okUrl(t.img))}" alt="" onerror="this.remove()">` : '';
-  const name = okUrl(t.url) ? `<a href="${esc(okUrl(t.url))}" target="_blank" rel="noopener sponsored" style="color:inherit">${esc(t.name)}</a>` : esc(t.name);
+  const name = okUrl(t.url) ? `<a href="${esc(okUrl(t.url))}" target="_blank" rel="noopener sponsored" style="color:inherit" onclick="spHit('${esc(t.id || '')}',true)">${esc(t.name)}</a>` : esc(t.name);
   el.innerHTML = `presented by ${logo} <b>${name}</b>`;
 }
 setInterval(() => {
@@ -426,6 +435,33 @@ async function sendRate(matchId) {
     btn.disabled = false; btn.textContent = 'Send my ratings';
     err.textContent = 'Could not send. Check the internet and try again.';
   }
+}
+
+// ---- Fan reactions + sponsor stats (patch v8) -------------------------
+let reactAt = 0;
+async function react(btn, matchId, emoji, ball) {
+  if (Date.now() - reactAt < 2000) return;
+  reactAt = Date.now();
+  btn.classList.add('sent');
+  setTimeout(() => btn.classList.remove('sent'), 2000);
+  try {
+    const s = await fanSession();
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/react`, {
+      method: 'POST',
+      headers: {apikey: KEY, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json'},
+      body: JSON.stringify({p_t: tid, p_m: matchId, p_e: emoji, p_ball: ball}),
+    });
+  } catch (e) {}
+}
+const spSeen = new Set();
+function spHit(id, click) {
+  if (!id || !tid) return;
+  if (!click) { if (spSeen.has(id)) return; spSeen.add(id); }
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/sponsor_hit`, {
+    method: 'POST', keepalive: true,
+    headers: {apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({p_t: tid, p_s: id, p_click: !!click}),
+  }).catch(() => {});
 }
 
 // ---- Fan polls ---------------------------------------------------------
