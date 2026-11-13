@@ -83,6 +83,9 @@
   .opt .pc{float:right;font-weight:700}
   .list .item:first-child{border-top:none}
   .muted{color:var(--muted);font-size:12px}
+  .ghost{margin-top:8px;font-size:13px;padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.06);display:inline-block}
+  .ghost .up{color:#4caf50}.ghost .down{color:#ef5350}
+  .brk{margin-top:8px;font-size:14px;font-weight:800;padding:8px 12px;border-radius:10px;background:rgba(0,137,123,.18);border:1px solid rgba(0,137,123,.6)}
   .fh{display:inline-block;margin-top:8px;font-size:11px;font-weight:900;letter-spacing:.8px;
     padding:3px 9px;border-radius:99px;background:var(--grad);color:#07202A}
   .empty{color:var(--muted);text-align:center;padding:40px 10px}
@@ -129,6 +132,8 @@ const KEY = 'sb_publishable_3I-qLBlxxieSUjIKA4UtvQ_vSbct9b-';
 const tid = new URLSearchParams(location.search).get('t');
 let view = new URLSearchParams(location.search).get('v') || 'live', rows = [], timer = null, lastOk = 0;
 
+function prayerName(k) { return ({ dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha', fajr: 'Fajr' })[k] || ''; }
+function hhmm(iso) { const t = new Date(iso); return isNaN(t) ? '' : t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtTime = iso => {
@@ -187,6 +192,8 @@ function matchCard(d, status, matchId) {
     now = `
       ${n.need != null && n.need > 0 ? `<div class="need">Need ${n.need} from ${n.ballsLeft} ball${n.ballsLeft === 1 ? '' : 's'}</div>` : ''}
       ${n.freeHit ? '<span class="fh">FREE HIT</span>' : ''}
+      ${n.break ? `<div class="brk">${n.break.k === 'prayer' ? '🕌 ' + esc(prayerName(n.break.l)) + ' prayer break' : '🥤 Drinks break'} · resumes ${esc(hhmm(n.break.u))}</div>` : ''}
+      ${n.ghost ? `<div class="ghost">👻 Ghost was ${n.ghost.r}/${n.ghost.w} at ${esc(n.ghost.o)} · <b class="${n.ghost.d > 0 ? 'up' : n.ghost.d < 0 ? 'down' : ''}">${n.ghost.d === 0 ? 'level' : Math.abs(n.ghost.d) + (n.ghost.d > 0 ? ' ahead' : ' behind')}</b></div>` : ''}
       ${typeof d.win === 'number' ? `<div class="win"><div class="lbl">
         <span style="color:${esc(d.a.color || 'var(--green)')}">${esc(d.a.code)} ${d.win}%</span>
         <span class="muted" style="font-weight:600">Win probability</span>
