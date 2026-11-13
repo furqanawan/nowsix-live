@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NowSix account</title>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0e16;color:#e8ecf4;display:flex;min-height:100vh;align-items:center;justify-content:center}
+  .card{width:min(92vw,380px);background:#151a26;border:1px solid #24304a;border-radius:16px;padding:24px}
+  h1{font-size:20px;margin:0 0 8px}
+  p{color:#9aa7bd;line-height:1.5;margin:0 0 14px}
+  input{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #2c3a57;background:#0f1420;color:#fff;font-size:16px;margin-bottom:10px}
+  button{width:100%;padding:12px;border:0;border-radius:10px;background:#18b07a;color:#fff;font-weight:800;font-size:16px;cursor:pointer}
+  button:disabled{opacity:.5}
+  .msg{margin-top:12px;font-weight:700}
+  .ok{color:#4caf50}.err{color:#ef5350}
+  .brand{letter-spacing:3px;font-weight:900;color:#18b07a;font-size:12px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="card" id="box">
+  <div class="brand">NOWSIX</div>
+  <h1 id="title">NowSix account</h1>
+  <p id="text">Open this page from the email NowSix sent you.</p>
+</div>
+<script>
+const SUPABASE_URL = 'https://ucelceflwdngfbzibnok.supabase.co';
+const KEY = 'sb_publishable_3I-qLBlxxieSUjIKA4UtvQ_vSbct9b-';
+const h = new URLSearchParams(location.hash.slice(1));
+const q = new URLSearchParams(location.search);
+const box = document.getElementById('box');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function show(title, text) {
+  document.getElementById('title').textContent = title;
+  document.getElementById('text').textContent = text;
+}
+const err = h.get('error_description') || q.get('error_description');
+const type = h.get('type') || q.get('type');
+const token = h.get('access_token');
+if (err) {
+  show('Link not valid', err.replace(/\+/g, ' ') + '. Ask NowSix to send a new one.');
+} else if (type === 'recovery' && token) {
+  show('Set a new password', 'Choose a new password for your NowSix account (at least 6 characters).');
+  box.insertAdjacentHTML('beforeend', `
+    <input id="p1" type="password" placeholder="New password" autocomplete="new-password">
+    <input id="p2" type="password" placeholder="New password again" autocomplete="new-password">
+    <button id="go">Save password</button><div id="m" class="msg"></div>`);
+  document.getElementById('go').onclick = async () => {
+    const p1 = document.getElementById('p1').value, p2 = document.getElementById('p2').value;
+    const m = document.getElementById('m');
+    if (p1.length < 6) { m.className = 'msg err'; m.textContent = 'At least 6 characters.'; return; }
+    if (p1 !== p2) { m.className = 'msg err'; m.textContent = 'The passwords are not the same.'; return; }
+    const b = document.getElementById('go'); b.disabled = true;
+    try {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        method: 'PUT',
+        headers: {apikey: KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({password: p1})
+      });
+      if (!r.ok) throw new Error((await r.json()).msg || r.status);
+      m.className = 'msg ok'; m.textContent = 'Password saved. Open NowSix and sign in.';
+      history.replaceState(null, '', location.pathname);
+    } catch (e) {
+      m.className = 'msg err'; m.textContent = 'Could not save: ' + esc(e.message);
+      b.disabled = false;
+    }
+  };
+} else if (token || type === 'signup' || type === 'email') {
+  show('Email confirmed ✅', 'Your NowSix account is ready. Open the app and sign in with your email and password.');
+  history.replaceState(null, '', location.pathname);
+}
+</script>
+</body>
+</html>
